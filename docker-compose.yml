@@ -1,0 +1,41 @@
+# ENF-08 — l'ensemble de la solution demarre par une commande unique :
+#   docker compose up --build
+#
+# Le service est sans etat et ne monte aucun volume de donnees : les documents
+# soumis sont traites en memoire et supprimes a l'issue du traitement (ENF-05).
+
+services:
+  cvguard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cvguard:1.0.0
+    container_name: cvguard
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      # Le controle OCR est desactivable sans reconstruction : le demonstrateur
+      # reste fonctionnel si l'integration de Tesseract pose probleme.
+      CVGUARD_OCR_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Page de demonstration comparant le pipeline naif et le pipeline protege (EF-13).
+  # Activee au lot J9 : docker compose --profile demo up
+  demo:
+    image: nginx:1.27-alpine
+    container_name: cvguard-demo
+    profiles: ["demo"]
+    ports:
+      - "8081:80"
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+    depends_on:
+      - cvguard
+    restart: unless-stopped

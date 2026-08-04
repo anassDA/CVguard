@@ -1,0 +1,81 @@
+spring:
+  application:
+    name: cvguard
+  servlet:
+    multipart:
+      # EF-01 : taille maximale du document soumis
+      max-file-size: 10MB
+      max-request-size: 12MB
+      # ENF-05 : le document reste en memoire tant qu'il n'excede pas cette taille
+      file-size-threshold: 12MB
+  mvc:
+    problemdetails:
+      enabled: false
+
+server:
+  port: 8080
+  error:
+    include-stacktrace: never
+    include-message: never
+
+cvguard:
+  upload:
+    max-size: 10MB
+
+  detection:
+    # Seuils du chapitre 8 du cahier des charges, reglables sans recompilation
+    thresholds:
+      min-font-size-pt: 3.0       # R1 : corps absolu minimal
+      median-font-ratio: 0.40     # R1 : fraction du corps median
+      min-contrast-ratio: 1.5     # R2 : ratio WCAG minimal
+      position-tolerance-pt: 2.0  # R3 : tolerance sur les bords de page
+      occlusion-ratio: 0.90       # R3 : recouvrement par un aplat opaque
+      invisible-char-density: 0.01 # R4 : densite de caracteres de largeur nulle
+      ocr-similarity-gap: 0.15    # R6 : ecart natif / rendu
+      suspect-score: 25
+      malicious-score: 60
+
+    # Activation et ponderation initiales ; modifiables a chaud via PUT /api/v1/rules/{code}
+    rules:
+      R1: { enabled: true, weight: 25 }
+      R2: { enabled: true, weight: 30 }
+      R3: { enabled: true, weight: 20 }
+      R4: { enabled: true, weight: 20 }
+      R5: { enabled: true, weight: 10 }
+      R6: { enabled: true, weight: 35 }
+      R7: { enabled: true, weight: 40 }
+
+  ocr:
+    # ENF-02 : le controle OCR n'est declenche que si un premier signal a ete leve
+    enabled: true
+    language: fra+eng
+    render-dpi: 150
+    max-pages: 5
+
+  sanitization:
+    envelope-tag: candidate_document
+    max-excerpt-length: 120
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    ma.emsi.cvguard: INFO
+    org.apache.pdfbox: ERROR
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{correlationId:-               }] %logger{36} - %msg%n"

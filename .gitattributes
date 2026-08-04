@@ -1,0 +1,13 @@
+# Normalisation des fins de ligne : le depot stocke en LF, la copie de travail
+# suit la convention de la plateforme. Evite un historique pollue par des
+# changements de fins de ligne entre Windows et Linux (construction Docker).
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.pdf binary
+*.docx binary
+*.png binary
+*.jpg binary
+*.jar binary

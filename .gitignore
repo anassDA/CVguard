@@ -1,0 +1,25 @@
+# Build
+target/
+*.jar
+*.war
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+bin/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Sorties locales
+logs/
+*.log
+/tmp/
+corpus/**/generated/
