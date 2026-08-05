@@ -18,6 +18,8 @@ import java.util.Objects;
  * @param fontSizePt corps effectif en points, matrice de transformation appliquee
  * @param color      couleur de rendu du glyphe
  * @param background couleur du fond sous-jacent, blanc par defaut si indeterminable
+ * @param alpha      opacite du remplissage, dans [0, 1] ; une opacite nulle rend le
+ *                   glyphe invisible sans que sa couleur ait ete modifiee
  * @param box        boite englobante dans le repere de la page
  * @param origin     provenance du fragment
  */
@@ -29,6 +31,7 @@ public record TextFragment(
         float fontSizePt,
         RgbColor color,
         RgbColor background,
+        float alpha,
         BoundingBox box,
         FragmentOrigin origin) {
 
@@ -37,6 +40,7 @@ public record TextFragment(
         Objects.requireNonNull(origin, "origin");
         color = color == null ? RgbColor.BLACK : color;
         background = background == null ? RgbColor.WHITE : background;
+        alpha = Math.min(1f, Math.max(0f, Float.isNaN(alpha) ? 1f : alpha));
     }
 
     /**
@@ -44,7 +48,7 @@ public record TextFragment(
      * qui n'ont ni police ni position.
      */
     public static TextFragment ofNonRendered(int index, String text, FragmentOrigin origin) {
-        return new TextFragment(index, 0, text, null, 0f, null, null, null, origin);
+        return new TextFragment(index, 0, text, null, 0f, null, null, 1f, null, origin);
     }
 
     public int length() {
@@ -60,13 +64,32 @@ public record TextFragment(
         return box != null && fontSizePt > 0f;
     }
 
-    /** Ratio de contraste entre le glyphe et son fond (regle R2). */
+    /**
+     * Couleur reellement percue : la couleur du glyphe composee sur son fond selon son
+     * opacite.
+     *
+     * <p>Un texte noir d'opacite nulle est aussi invisible qu'un texte blanc sur blanc.
+     * Composer avant de mesurer le contraste evite d'avoir a traiter separement ce
+     * second vecteur de dissimulation.</p>
+     */
+    public RgbColor effectiveColor() {
+        if (alpha >= 1f) {
+            return color;
+        }
+        return new RgbColor(
+                alpha * color.red() + (1f - alpha) * background.red(),
+                alpha * color.green() + (1f - alpha) * background.green(),
+                alpha * color.blue() + (1f - alpha) * background.blue());
+    }
+
+    /** Ratio de contraste entre le glyphe effectivement rendu et son fond (regle R2). */
     public double contrastRatio() {
-        return color.contrastRatio(background);
+        return effectiveColor().contrastRatio(background);
     }
 
     /** Copie du fragment avec un texte substitue, les attributs de rendu etant conserves. */
     public TextFragment withText(String newText) {
-        return new TextFragment(index, page, newText, fontName, fontSizePt, color, background, box, origin);
+        return new TextFragment(
+                index, page, newText, fontName, fontSizePt, color, background, alpha, box, origin);
     }
 }

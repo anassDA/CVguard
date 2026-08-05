@@ -194,7 +194,7 @@ cvguard:
 | Lot | Travaux | État |
 |---|---|---|
 | J1 | Cadrage, structuration en couches, configuration, moteur d'orchestration, agrégateur de score | **fait** |
-| J2 | Extraction PDF avec attributs de rendu (PDFBox) | à faire |
+| J2 | Extraction PDF avec attributs de rendu (PDFBox) | **fait** |
 | J3 | Extraction DOCX (POI), normalisation Unicode, caractères invisibles | à faire |
 | J4 | Règles R1, R2, R3 | à faire |
 | J5 | Règles R4, R5 ; endpoint `/inspect` | à faire |
@@ -206,6 +206,31 @@ cvguard:
 
 L'image Docker et le fichier `docker-compose.yml` sont rédigés mais leur construction n'a pas encore été
 vérifiée : elle le sera au lot J7, lorsque l'intégration de Tesseract sera effectivement exercée.
+
+### Note technique — extraction PDF (J2)
+
+Trois écarts entre PDFBox 3 et ce qu'un usage superficiel de `PDFTextStripper` laisserait supposer,
+déterminants pour la fiabilité des règles R1 à R3 :
+
+1. **La couleur n'est pas enregistrée par défaut.** `PDFTextStripper` n'installe que les opérateurs utiles
+   à l'extraction de texte ; les opérateurs de couleur (`rg`, `g`, `k`, `sc`, `scn`) en sont absents, si bien
+   que l'état graphique reste au noir par défaut quelle que soit la couleur réellement peinte. Un texte
+   blanc sur blanc serait restitué comme noir. `RenderAwareTextStripper` enregistre ces opérateurs
+   explicitement.
+2. **La taille déclarée n'est pas la taille rendue.** `TextPosition.getFontSizeInPt()` retourne la taille
+   passée à l'opérateur `Tf`, sans tenir compte de la matrice de transformation courante. Un corps 12
+   déclaré puis réduit d'un facteur 10 par la matrice produit un texte rendu à 1,2 pt tout en annonçant 12
+   — une règle R1 fondée sur cette méthode serait trivialement contournable. C'est `getYScale()` qui
+   restitue la taille effectivement rendue, et c'est elle qui est retenue.
+3. **L'état graphique n'est lisible qu'au moment du glyphe.** `PDFTextStripper` collecte tous les glyphes
+   d'une page avant d'appeler `writeString` ; à cet instant le flux de contenu est intégralement consommé
+   et l'état graphique a repris sa valeur initiale. Couleur et opacité sont donc relevées dans
+   `processTextPosition`, seul point où l'état correspond réellement au glyphe peint.
+
+Le recouvrement d'un fragment par un élément graphique opaque (aplat, image) — le troisième vecteur du
+chapitre 1 — n'est pas traité à ce stade : il relève de la logique de la règle **R3** elle-même
+(« positionnement hors zone [...] ou recouvert par un élément graphique opaque », chapitre 8) et sera
+implémenté à son tour au lot J4, avec une analyse de l'ordre de peinture du flux de contenu.
 
 ---
 
