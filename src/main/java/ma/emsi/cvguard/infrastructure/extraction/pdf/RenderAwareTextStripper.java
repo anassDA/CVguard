@@ -10,6 +10,7 @@ import ma.emsi.cvguard.domain.model.BoundingBox;
 import ma.emsi.cvguard.domain.model.FragmentOrigin;
 import ma.emsi.cvguard.domain.model.RgbColor;
 import ma.emsi.cvguard.domain.model.TextFragment;
+import ma.emsi.cvguard.domain.text.TextNormalizer;
 import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColor;
 import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColorN;
 import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColorSpace;
@@ -19,6 +20,7 @@ import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingDeviceRGBCol
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 
@@ -58,6 +60,14 @@ import org.apache.pdfbox.text.TextPosition;
  * couleur retournerait invariablement du noir. Couleur et opacite sont donc relevees
  * dans {@code processTextPosition}, seul moment ou l'etat graphique est celui du
  * glyphe, puis associees a leur position jusqu'a la constitution des fragments.</p>
+ *
+ * <h2>5. Un mode de rendu peut masquer le texte sans toucher a sa couleur</h2>
+ * <p>L'operateur {@code Tr} (mode de rendu de texte) peut valoir 3 : le glyphe n'est
+ * ni rempli ni trace, donc invisible, quelle que soit sa couleur declaree. Ce mode
+ * est utilise legitimement par la couche de texte superposee a l'image d'un PDF
+ * scanne — c'est ainsi qu'un tel document reste selectionnable et cherchable — mais
+ * rien n'empeche un attaquant du meme mecanisme pour dissimuler une instruction. La
+ * regle R2 doit voir ce texte comme si son contraste etait nul.</p>
  */
 public class RenderAwareTextStripper extends PDFTextStripper {
 
@@ -137,9 +147,11 @@ public class RenderAwareTextStripper extends PDFTextStripper {
      */
     @Override
     protected void processTextPosition(TextPosition glyph) {
+        RenderingMode mode = getGraphicsState().getTextState().getRenderingMode();
         paints.put(glyph, new Paint(
                 nonStrokingColour(),
-                round(getGraphicsState().getNonStrokeAlphaConstant())));
+                round(getGraphicsState().getNonStrokeAlphaConstant()),
+                !mode.isFill() && !mode.isStroke()));
         super.processTextPosition(glyph);
     }
 
@@ -179,7 +191,8 @@ public class RenderAwareTextStripper extends PDFTextStripper {
                 glyph.getFont() == null ? null : glyph.getFont().getName(),
                 fontSizePt,
                 paint.colour(),
-                paint.alpha());
+                paint.alpha(),
+                paint.hidden());
 
         if (accumulator == null || !accumulator.attributes.equals(attributes)) {
             flush();
@@ -227,14 +240,15 @@ public class RenderAwareTextStripper extends PDFTextStripper {
         return Math.round(value * 100d) / 100f;
     }
 
-    /** Couleur et opacite relevees au moment ou le glyphe est peint. */
-    private record Paint(RgbColor colour, float alpha) {
+    /** Couleur, opacite et visibilite relevees au moment ou le glyphe est peint. */
+    private record Paint(RgbColor colour, float alpha, boolean hidden) {
 
-        private static final Paint OPAQUE_BLACK = new Paint(RgbColor.BLACK, 1f);
+        private static final Paint OPAQUE_BLACK = new Paint(RgbColor.BLACK, 1f, false);
     }
 
     /** Attributs de rendu dont l'egalite definit l'homogeneite d'un fragment. */
-    private record Attributes(int page, String fontName, float fontSizePt, RgbColor colour, float alpha) {
+    private record Attributes(
+            int page, String fontName, float fontSizePt, RgbColor colour, float alpha, boolean hidden) {
 
         @Override
         public boolean equals(Object other) {
@@ -243,12 +257,13 @@ public class RenderAwareTextStripper extends PDFTextStripper {
                     && Objects.equals(fontName, that.fontName)
                     && Float.compare(fontSizePt, that.fontSizePt) == 0
                     && Objects.equals(colour, that.colour)
-                    && Float.compare(alpha, that.alpha) == 0;
+                    && Float.compare(alpha, that.alpha) == 0
+                    && hidden == that.hidden;
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(page, fontName, fontSizePt, colour, alpha);
+            return Objects.hash(page, fontName, fontSizePt, colour, alpha, hidden);
         }
     }
 
@@ -289,7 +304,7 @@ public class RenderAwareTextStripper extends PDFTextStripper {
             return new TextFragment(
                     index,
                     attributes.page(),
-                    text.toString(),
+                    TextNormalizer.nfkc(text.toString()),
                     attributes.fontName(),
                     attributes.fontSizePt(),
                     attributes.colour(),
@@ -299,6 +314,7 @@ public class RenderAwareTextStripper extends PDFTextStripper {
                     // analyse l'ordre de peinture du flux de contenu.
                     RgbColor.WHITE,
                     attributes.alpha(),
+                    attributes.hidden(),
                     new BoundingBox(left, bottom, right - left, top - bottom),
                     FragmentOrigin.BODY);
         }

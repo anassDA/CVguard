@@ -39,7 +39,12 @@ public record ExtractedDocument(
         return pages.size();
     }
 
-    /** Fragments effectivement rendus sur une page, seuls concernes par R1 a R3. */
+    /**
+     * Fragments porteurs d'attributs typographiques (police, corps, couleur), concernes
+     * par les regles R1 et R2. Un DOCX y figure meme sans position connue ; seule R3,
+     * qui a besoin d'une position, doit filtrer plus avant par
+     * {@link TextFragment#hasKnownPosition()}.
+     */
     public List<TextFragment> renderedFragments() {
         return fragments.stream().filter(TextFragment::isRendered).toList();
     }

@@ -78,6 +78,7 @@ class RuleContextTest {
                 RgbColor.BLACK,
                 RgbColor.WHITE,
                 1f,
+                false,
                 new BoundingBox(72f, 700f - index * 20f, 400f, fontSizePt),
                 FragmentOrigin.BODY);
     }

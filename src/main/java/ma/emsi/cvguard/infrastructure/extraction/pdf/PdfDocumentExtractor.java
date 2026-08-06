@@ -13,6 +13,7 @@ import ma.emsi.cvguard.domain.model.PageGeometry;
 import ma.emsi.cvguard.domain.model.TextFragment;
 import ma.emsi.cvguard.domain.port.DocumentExtractionException;
 import ma.emsi.cvguard.domain.port.DocumentExtractor;
+import ma.emsi.cvguard.domain.text.TextNormalizer;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
@@ -95,7 +96,7 @@ public class PdfDocumentExtractor implements DocumentExtractor {
             return metadata;
         }
         for (String key : information.getMetadataKeys()) {
-            String value = information.getCustomMetadataValue(key);
+            String value = TextNormalizer.nfkc(information.getCustomMetadataValue(key));
             if (value != null && !value.isBlank()) {
                 metadata.put(key, value);
             }
@@ -123,10 +124,18 @@ public class PdfDocumentExtractor implements DocumentExtractor {
         return contents;
     }
 
+    /**
+     * Ajoute des fragments non rendus.
+     *
+     * <p>NFKC etant idempotente, normaliser ici une valeur de metadonnee deja
+     * normalisee par {@code readMetadata()} est sans effet : cette methode peut donc
+     * s'appliquer uniformement aux deux sources sans que l'appelant ait a se souvenir
+     * de laquelle a deja ete traitee.</p>
+     */
     private static void appendNonRendered(
             List<TextFragment> fragments, Iterable<String> values, FragmentOrigin origin) {
         for (String value : values) {
-            fragments.add(TextFragment.ofNonRendered(fragments.size(), value, origin));
+            fragments.add(TextFragment.ofNonRendered(fragments.size(), TextNormalizer.nfkc(value), origin));
         }
     }
 

@@ -3,10 +3,12 @@ package ma.emsi.cvguard;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import ma.emsi.cvguard.config.RuleRegistry;
+import ma.emsi.cvguard.domain.model.DocumentFormat;
 import ma.emsi.cvguard.domain.model.RuleCode;
 import ma.emsi.cvguard.domain.rule.DetectionThresholds;
 import ma.emsi.cvguard.domain.rule.RuleEngine;
 import ma.emsi.cvguard.domain.score.ScoreAggregator;
+import ma.emsi.cvguard.infrastructure.extraction.UnifiedDocumentExtractor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,12 +33,22 @@ class CvGuardApplicationTests {
     @Autowired
     private DetectionThresholds thresholds;
 
+    @Autowired
+    private UnifiedDocumentExtractor documentExtractor;
+
     @Test
     @DisplayName("Le contexte applicatif demarre et expose les composants du domaine")
     void contextLoads() {
         assertThat(registry).isNotNull();
         assertThat(engine).isNotNull();
         assertThat(aggregator).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Les deux extracteurs du perimetre sont enregistres aupres du service unifie")
+    void bothExtractorsAreWired() {
+        assertThat(documentExtractor.supportedFormats())
+                .containsExactlyInAnyOrder(DocumentFormat.PDF, DocumentFormat.DOCX);
     }
 
     @Test

@@ -35,6 +35,15 @@ Vecteurs de dissimulation couverts :
 | Écart entre le texte extrait et le texte réellement visible (OCR) | R6 |
 | Segments rédigés sous forme d'instruction adressée à un système | R7 |
 
+Deux vecteurs supplémentaires, non listés explicitement au chapitre 1 du cahier mais identifiés durant
+l'implémentation, sont couverts par la même logique que le contraste (R2) : un texte marqué invisible ne
+produit à l'écran aucun contraste avec son fond, quelle que soit sa couleur déclarée.
+
+| Vecteur natif du format | Mécanisme | Détecté via |
+|---|---|---|
+| Texte masqué (Word, Format > Police > Masqué) | `w:vanish` (DOCX) | `TextFragment.hidden` → R2 |
+| Mode de rendu de texte invisible | `Tr 3` (PDF) — légitime dans une couche OCR de PDF scanné | `TextFragment.hidden` → R2 |
+
 ---
 
 ## 2. Architecture
@@ -44,15 +53,20 @@ dépendances techniques par des interfaces.
 
 ```
 ma.emsi.cvguard
-├── exposition/      Contrôleurs REST · validation · gestion des erreurs · OpenAPI
-├── application/     Orchestrateur d'inspection · assembleur de rapport
+├── exposition/                Contrôleurs REST · validation · gestion des erreurs · OpenAPI
+├── application/                Orchestrateur d'inspection · assembleur de rapport
 ├── domain/
-│   ├── model/       Fragments, couleurs, boîtes englobantes, détections, verdicts
-│   ├── rule/        Contrat des règles · moteur d'orchestration · seuils
-│   ├── score/       Agrégation pondérée et verdict
-│   └── port/        Extraction · rendu · OCR · client LLM
-├── infrastructure/  PDFBox · POI · Tesseract · client LLM
-└── config/          Propriétés, registre des règles, assemblage du domaine
+│   ├── model/                  Fragments, couleurs, boîtes englobantes, détections, verdicts
+│   ├── rule/                   Contrat des règles · moteur d'orchestration · seuils
+│   ├── score/                  Agrégation pondérée et verdict
+│   ├── text/                   Normalisation NFKC · relevé des caractères invisibles (pur, sans I/O)
+│   └── port/                   Extraction · rendu · OCR · client LLM
+├── infrastructure/
+│   └── extraction/
+│       ├── UnifiedDocumentExtractor   point d'entrée unique, dispatch par format
+│       ├── pdf/                 PDFBox — RenderAwareTextStripper
+│       └── docx/                Apache POI — XWPF
+└── config/                     Propriétés, registre des règles, assemblage du domaine
 ```
 
 Le domaine ne dépend ni de Spring ni d'une bibliothèque d'extraction : `RuleEngine` et `ScoreAggregator`
@@ -195,7 +209,7 @@ cvguard:
 |---|---|---|
 | J1 | Cadrage, structuration en couches, configuration, moteur d'orchestration, agrégateur de score | **fait** |
 | J2 | Extraction PDF avec attributs de rendu (PDFBox) | **fait** |
-| J3 | Extraction DOCX (POI), normalisation Unicode, caractères invisibles | à faire |
+| J3 | Extraction DOCX (POI), normalisation Unicode, caractères invisibles | **fait** |
 | J4 | Règles R1, R2, R3 | à faire |
 | J5 | Règles R4, R5 ; endpoint `/inspect` | à faire |
 | J6 | Corpus de validation (70 documents) | à faire |
@@ -231,6 +245,55 @@ Le recouvrement d'un fragment par un élément graphique opaque (aplat, image) �
 chapitre 1 — n'est pas traité à ce stade : il relève de la logique de la règle **R3** elle-même
 (« positionnement hors zone [...] ou recouvert par un élément graphique opaque », chapitre 8) et sera
 implémenté à son tour au lot J4, avec une analyse de l'ordre de peinture du flux de contenu.
+
+Un quatrième vecteur, absent de l'énumération initiale du chapitre 1, a été identifié en cours
+d'implémentation : le mode de rendu de texte invisible (`Tr 3`), légitimement utilisé par la couche OCR
+d'un PDF scanné mais détournable pour dissimuler une instruction sans toucher ni à la couleur ni à
+l'opacité. `RenderAwareTextStripper` le relève désormais (`TextFragment.hidden`), et `effectiveColor()`
+traite un fragment masqué comme un contraste nul — même traitement que le blanc sur blanc, pour la
+règle R2.
+
+### Note technique — extraction DOCX et normalisation (J3)
+
+**Périmètre DOCX.** Le cahier des charges limite volontairement l'extraction DOCX à l'accès aux propriétés
+de style au niveau du XML (chapitre 7.4 : Apache POI, pas de moteur de mise en page). Trois conséquences en
+découlent, assumées et documentées dans `DocxDocumentExtractor` :
+
+1. **Aucune position.** `ExtractedDocument.pages()` reste vide et chaque fragment a une boîte englobante
+   nulle : la règle R3 ne s'applique pas à un DOCX.
+2. **Aucun fond.** La trame de fond d'un paragraphe (`w:shd`) n'est pas relevée ; le fond retenu reste le
+   blanc par défaut. Une injection dissimulée par correspondance de trame plutôt que de couleur de police
+   échapperait à R2 dans cette version.
+3. **Corps par défaut approché.** Un run sans taille explicite hérite en principe d'une cascade de styles
+   (run → paragraphe → styles par défaut du document) ; reconstruire cette cascade est hors périmètre. Un
+   corps conventionnel de 11 pt — le défaut usuel de Word et LibreOffice — est retenu à la place.
+
+**Texte masqué natif (`w:vanish`).** Contrairement aux limites ci-dessus, ce vecteur est pleinement pris en
+charge : Format > Police > Masqué est le moyen le plus direct de dissimuler une instruction dans un DOCX,
+accessible sans aucune manipulation de couleur ou de corps. Comme pour le mode `Tr 3` en PDF, un fragment
+masqué est traité comme un contraste nul par la règle R2.
+
+**Point de vigilance POI.** `XWPFDocument.getComments()` lève une `NullPointerException` interne à la
+bibliothèque lorsque le document ne déclare aucune partie commentaires — le cas de la grande majorité des
+documents. L'appel doit être gardé par `getDocComments() != null`, sans quoi *tout* document DOCX sans
+commentaire échouerait à l'extraction. Découvert par test (`handlesEmptyDocument` échouait sur un document
+entièrement vide), corrigé dans `DocxDocumentExtractor`.
+
+**Normalisation Unicode (étape [2]).** `TextNormalizer` ramène chaque fragment en forme de compatibilité
+NFKC : sans cette étape, un attaquant pourrait rédiger son instruction en caractères pleine chasse
+(`ＩＧＮＯＲＥ` → `IGNORE`) pour échapper à une détection lexicale fondée sur une expression régulière
+simple (règle R7, à venir). NFKC ne décompose ni ne supprime les caractères de largeur nulle ni les marques
+directionnelles : la normalisation peut donc s'appliquer sans effacer les indices que la règle R4 doit
+détecter (`InvisibleCharacterScanner`, seize points de code couvrant les deux familles du chapitre 1).
+
+Ces deux normalisations sont appliquées uniformément aux deux formats, dans les extracteurs eux-mêmes plutôt
+que dans un décorateur séparé — NFKC étant idempotente, l'appliquer à une valeur déjà normalisée (cas des
+métadonnées, lues puis réutilisées pour construire les fragments dédiés) est sans effet.
+
+**Point d'entrée unifié.** `UnifiedDocumentExtractor` dispatche vers l'extracteur du format concerné,
+déterminé à partir du nom de fichier déclaré. Prendre en charge un nouveau format se limite à publier une
+nouvelle implémentation de `DocumentExtractor` (ENF-07) ; c'est ce composant que l'orchestrateur
+d'inspection (J5) appellera.
 
 ---
 

@@ -14,6 +14,7 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
+import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.util.Matrix;
 
 /**
@@ -135,6 +136,26 @@ public final class TestPdfBuilder {
             stream.showText(content);
             stream.endText();
             stream.restoreGraphicsState();
+        });
+        return this;
+    }
+
+    /**
+     * Texte au mode de rendu invisible ({@code Tr 3}).
+     *
+     * <p>Mecanisme legitimement utilise par la couche de texte superposee a l'image
+     * d'un PDF scanne, et detourne ici pour simuler une dissimulation par ce moyen :
+     * ni la couleur ni l'opacite ne trahissent l'invisibilite.</p>
+     */
+    public TestPdfBuilder invisibleRenderModeText(String content, float x, float y, float fontSizePt) {
+        current.operations.add(stream -> {
+            stream.beginText();
+            stream.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), fontSizePt);
+            stream.setNonStrokingColor(0f, 0f, 0f);
+            stream.setRenderingMode(RenderingMode.NEITHER);
+            stream.newLineAtOffset(x, y);
+            stream.showText(content);
+            stream.endText();
         });
         return this;
     }
