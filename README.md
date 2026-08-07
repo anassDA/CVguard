@@ -60,6 +60,7 @@ ma.emsi.cvguard
 │   ├── rule/                   Contrat des règles · moteur d'orchestration · seuils
 │   ├── score/                  Agrégation pondérée et verdict
 │   ├── text/                   Normalisation NFKC · relevé des caractères invisibles (pur, sans I/O)
+│   ├── rule/impl/               R1 corps · R2 contraste · R3 position (@Component, auto-enregistrées)
 │   └── port/                   Extraction · rendu · OCR · client LLM
 ├── infrastructure/
 │   └── extraction/
@@ -210,7 +211,7 @@ cvguard:
 | J1 | Cadrage, structuration en couches, configuration, moteur d'orchestration, agrégateur de score | **fait** |
 | J2 | Extraction PDF avec attributs de rendu (PDFBox) | **fait** |
 | J3 | Extraction DOCX (POI), normalisation Unicode, caractères invisibles | **fait** |
-| J4 | Règles R1, R2, R3 | à faire |
+| J4 | Règles R1, R2, R3 | **fait** |
 | J5 | Règles R4, R5 ; endpoint `/inspect` | à faire |
 | J6 | Corpus de validation (70 documents) | à faire |
 | J7 | Contrôle OCR (Tesseract), règle R6 | à faire |
@@ -294,6 +295,41 @@ métadonnées, lues puis réutilisées pour construire les fragments dédiés) e
 déterminé à partir du nom de fichier déclaré. Prendre en charge un nouveau format se limite à publier une
 nouvelle implémentation de `DocumentExtractor` (ENF-07) ; c'est ce composant que l'orchestrateur
 d'inspection (J5) appellera.
+
+### Note technique — règles R1, R2, R3 (J4)
+
+Les trois premières règles sont des `@Component` implémentant `DetectionRule` ; Spring les injecte
+automatiquement dans `RuleEngine` via `List<DetectionRule>` (`DomainConfiguration`), sans registre manuel à
+tenir à jour (ENF-07). Vérifié en conditions réelles : `GET /api/v1/rules` bascule `implemented` à `true`
+pour R1, R2, R3 dès leur ajout, sans aucune autre modification.
+
+**R1 — deux planchers, pas un seul.** Un fragment est signalé s'il est sous le seuil absolu (3 pt) **ou**
+sous 40 % du corps médian du document. Le second critère est nécessaire : sur un CV déjà composé en corps
+6, un texte dissimulé en corps 5 franchirait le seuil absolu sans jamais être détecté par lui seul.
+
+**R2 — un seul calcul pour trois vecteurs.** `TextFragment.effectiveColor()` compose déjà la couleur
+déclarée avec l'opacité et l'attribut d'invisibilité natif (`w:vanish`, `Tr 3`) posés en J2/J3 : la règle
+n'a donc pas à distinguer le blanc sur blanc, le texte transparent et le texte au mode de rendu invisible,
+qui produisent tous trois un ratio de contraste de 1,0. Vérifié bout en bout via
+`RuleEngineIntegrationTest`, sur des documents PDF et DOCX réellement extraits.
+
+**R3 — périmètre volontairement restreint au hors-page.** Le second volet du cahier des charges —
+« recouvert par un élément graphique opaque » — n'est **pas** implémenté dans cette version. Le détecter
+correctement suppose de connaître l'ordre de peinture relatif du texte et des éléments graphiques d'un même
+flux de contenu ; sans cet ordre, un simple recouvrement de boîtes englobantes confondrait un texte
+dissimulé sous un aplat avec un texte parfaitement visible devant un bandeau de couleur — un cas fréquent
+et légitime dans un CV (en-tête de section, encadré). Cette confusion irait à l'encontre du principe du
+chapitre 10 (« un système qui écarte des candidats légitimes est plus nuisible que l'attaque qu'il
+prévient ») ; le risque de faux positifs non maîtrisés a été jugé supérieur au bénéfice d'une implémentation
+hâtive. Documenté en tête de `OutOfPageAreaRule` et repris en perspective d'évolution (chapitre 9).
+
+**Test d'intégration bout en bout.** `RuleEngineIntegrationTest` extrait de vrais documents PDF et DOCX
+construits par programme, puis exécute le moteur complet dessus — un CV sain ne déclenche rien, un CV
+combinant blanc sur blanc, corps minuscule et texte hors page est rejeté (score ≥ 60). Ce niveau de test a
+sa raison d'être : les tests unitaires de chaque règle raisonnent sur des `TextFragment` construits
+directement, et n'auraient pas pu trahir un décalage entre ce qu'un extracteur produit réellement et ce
+qu'une règle suppose recevoir — exactement le type d'écart qu'a révélé le bug `getComments()` de J3 sur un
+cas pourtant trivial.
 
 ---
 
