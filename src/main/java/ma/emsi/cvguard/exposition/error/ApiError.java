@@ -34,4 +34,9 @@ public record ApiError(
     public static ApiError of(int status, String error, String message, List<String> details) {
         return new ApiError(Instant.now(), status, error, message, null, details);
     }
+
+    /** Variante portant l'identifiant de correlation de l'inspection en cours (EF-14). */
+    public static ApiError of(int status, String error, String message, List<String> details, String correlationId) {
+        return new ApiError(Instant.now(), status, error, message, correlationId, details);
+    }
 }

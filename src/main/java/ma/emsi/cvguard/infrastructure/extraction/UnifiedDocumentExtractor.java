@@ -38,7 +38,7 @@ public class UnifiedDocumentExtractor {
      */
     public ExtractedDocument extract(byte[] content, String documentId, String filename) {
         DocumentFormat format = DocumentFormat.fromFilename(filename)
-                .orElseThrow(() -> new DocumentExtractionException(
+                .orElseThrow(() -> new DocumentExtractionException( 
                         "Format de document non reconnu a partir du nom de fichier : " + filename
                                 + ". Formats acceptes : PDF, DOCX."));
         return extract(content, documentId, filename, format);

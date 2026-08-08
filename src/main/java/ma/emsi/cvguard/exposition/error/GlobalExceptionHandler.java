@@ -11,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 /**
  * Traduction uniforme des erreurs en reponses HTTP.
@@ -27,6 +28,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RuleController.UnknownRuleException.class)
     public ResponseEntity<ApiError> handleUnknownRule(RuleController.UnknownRuleException exception) {
         return build(HttpStatus.NOT_FOUND, "Regle inconnue", exception.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiError> handleMissingPart(MissingServletRequestPartException exception) {
+        return build(HttpStatus.BAD_REQUEST, "Requete invalide",
+                "Aucun document fourni : joindre un fichier PDF ou DOCX dans le champ 'file'.", List.of());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -67,6 +74,7 @@ public class GlobalExceptionHandler {
 
     private static ResponseEntity<ApiError> build(
             HttpStatus status, String error, String message, List<String> details) {
-        return ResponseEntity.status(status).body(ApiError.of(status.value(), error, message, details));
+        return ResponseEntity.status(status)
+                .body(ApiError.of(status.value(), error, message, details, org.slf4j.MDC.get("correlationId")));
     }
 }

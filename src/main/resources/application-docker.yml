@@ -1,0 +1,9 @@
+# Profil Docker (SPRING_PROFILES_ACTIVE=docker dans docker-compose.yml).
+#
+# Les valeurs par defaut d'application.yml conviennent telles quelles : le profil
+# porte uniquement ce que le contexte conteneurise rend necessaire. L'OCR est fourni
+# par le paquet tesseract-ocr installe dans l'image ; TESSDATA_PREFIX pointe vers
+# les donnees de langue embarquees.
+springdoc:
+  swagger-ui:
+    enabled: true

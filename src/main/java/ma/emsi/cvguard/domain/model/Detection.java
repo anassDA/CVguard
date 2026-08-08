@@ -11,12 +11,14 @@ import java.util.Objects;
  * le verdict reste explicable : un analyste doit pouvoir remonter d'un score a la
  * ligne de texte et au critere qui l'ont declenche.</p>
  *
- * @param rule        regle a l'origine du signalement
- * @param severity    gravite de ce signalement pris isolement
- * @param page        page concernee, ou 0 lorsque la detection ne porte pas sur une page
- * @param boundingBox localisation sur la page, {@code null} pour une detection non localisable
- * @param excerpt     extrait du texte incrimine, tel que detecte
- * @param details     elements chiffres propres a la regle (ratio de contraste, corps mesure...)
+ * @param rule          regle a l'origine du signalement
+ * @param severity      gravite de ce signalement pris isolement
+ * @param page          page concernee, ou 0 lorsque la detection ne porte pas sur une page
+ * @param boundingBox   localisation sur la page, {@code null} pour une detection non localisable
+ * @param excerpt       extrait du texte incrimine, tel que detecte
+ * @param details       elements chiffres propres a la regle (ratio de contraste, corps mesure...)
+ * @param fragmentIndex rang du fragment incrimine dans le document extrait, ou -1 lorsque
+ *                      la detection ne porte pas sur un fragment precis (comparaison OCR)
  */
 public record Detection(
         RuleCode rule,
@@ -24,13 +26,15 @@ public record Detection(
         int page,
         BoundingBox boundingBox,
         String excerpt,
-        Map<String, Object> details) {
+        Map<String, Object> details,
+        int fragmentIndex) {
 
     public Detection {
         Objects.requireNonNull(rule, "rule");
         severity = severity == null ? rule.defaultSeverity() : severity;
         excerpt = excerpt == null ? "" : excerpt;
         details = details == null ? Map.of() : Map.copyOf(details);
+        fragmentIndex = fragmentIndex < 0 ? -1 : fragmentIndex;
     }
 
     /** Libelle lisible de la regle, restitue dans le rapport JSON. */
@@ -55,6 +59,7 @@ public record Detection(
         private int page;
         private BoundingBox boundingBox;
         private String excerpt = "";
+        private int fragmentIndex = -1;
 
         private Builder(RuleCode rule) {
             this.rule = Objects.requireNonNull(rule, "rule");
@@ -86,6 +91,13 @@ public record Detection(
             this.page = fragment.page();
             this.boundingBox = fragment.box();
             this.excerpt = fragment.text();
+            this.fragmentIndex = fragment.index();
+            return this;
+        }
+
+        /** Ancre la detection sur un fragment precise, sans en reprendre la position. */
+        public Builder fragmentIndex(int value) {
+            this.fragmentIndex = value;
             return this;
         }
 
@@ -95,7 +107,7 @@ public record Detection(
         }
 
         public Detection build() {
-            return new Detection(rule, severity, page, boundingBox, excerpt, details);
+            return new Detection(rule, severity, page, boundingBox, excerpt, details, fragmentIndex);
         }
     }
 }
